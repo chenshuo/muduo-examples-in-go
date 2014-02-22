@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"time"
 
 	"github.com/chenshuo/muduo-examples-in-go/muduo"
@@ -32,19 +33,54 @@ func init() {
 	flag.IntVar(&opt.number, "n", 8192, "Number of buffers")
 	flag.BoolVar(&opt.receive, "r", false, "Receive")
 	flag.StringVar(&opt.host, "t", "", "Transmit")
-	if binary.Size(SessionMessage{}) != 8 {
-		panic("packed struct")
-	}
+	muduo.Check(binary.Size(SessionMessage{}) == 8, "packed struct")
 }
 
 func transmit() {
+	sessionMessage := SessionMessage{int32(opt.number), int32(opt.length)}
+	fmt.Printf("buffer length = %d\nnumber of buffers = %d\n",
+		sessionMessage.Length, sessionMessage.Number)
+	total_mb := float64(sessionMessage.Number) * float64(sessionMessage.Length) / 1024.0 / 1024.0
+	fmt.Printf("%.3f MiB in total\n", total_mb)
+
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", opt.host, opt.port))
+	muduo.PanicOnError(err)
 	// t := conn.(*net.TCPConn)
 	// t.SetNoDelay(false)
+	defer conn.Close()
+
+	start := time.Now()
+	err = binary.Write(conn, binary.BigEndian, &sessionMessage)
+	muduo.PanicOnError(err)
+
+	total_len := 4 + opt.length; // binary.Size(int32(0)) == 4
+	// println(total_len)
+	payload := make([]byte, total_len)
+	binary.BigEndian.PutUint32(payload, uint32(opt.length))
+	for i := 0; i < opt.length; i++ {
+		payload[4+i] = "0123456789ABCDEF"[i % 16];
+	}
+
+	for i := 0; i < opt.number; i++ {
+		var n int
+		n, err = conn.Write(payload)
+		muduo.PanicOnError(err)
+		muduo.Check(n == len(payload), "write payload")
+
+		var ack int32
+		err = binary.Read(conn, binary.BigEndian, &ack)
+		muduo.PanicOnError(err)
+		muduo.Check(ack == int32(opt.length), "ack")
+	}
+
+	elapsed := time.Since(start).Seconds()
+	fmt.Printf("%.3f seconds\n%.3f MiB/s\n", elapsed, total_mb/elapsed)
 }
 
 func receive() {
 	listener := muduo.ListenTcpOrDie(fmt.Sprintf(":%d", opt.port))
 	defer listener.Close()
+	println("Accepting", listener.Addr().String())
 	conn, err := listener.Accept()
 	muduo.PanicOnError(err)
 	defer conn.Close()
@@ -65,16 +101,12 @@ func receive() {
 		var length int32
 		err = binary.Read(conn, binary.BigEndian, &length)
 		muduo.PanicOnError(err)
-		if length != sessionMessage.Length {
-			panic("read length")
-		}
+		muduo.Check(length == sessionMessage.Length, "read length")
 
 		var n int
 		n, err = io.ReadFull(conn, payload)
 		muduo.PanicOnError(err)
-		if n != len(payload) {
-			panic("read payload data")
-		}
+		muduo.Check(n == len(payload), "read payload")
 
 		// ack
 		err = binary.Write(conn, binary.BigEndian, &length)
@@ -94,9 +126,8 @@ func main() {
 	}
 
 	if opt.transmit {
-		println("transmit")
+		transmit()
 	} else if opt.receive {
-		// println("receive")
 		receive()
 	} else {
 		panic("unknown")

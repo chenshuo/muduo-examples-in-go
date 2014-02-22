@@ -5,6 +5,12 @@ import (
 	"net"
 )
 
+func Check(v bool, msg string) {
+	if !v {
+		panic(msg)
+	}
+}
+
 func PanicOnError(err error) {
 	if err != nil {
 		panic(err)
