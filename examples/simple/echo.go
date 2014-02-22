@@ -4,6 +4,8 @@ import (
 	"io"
 	"log"
 	"net"
+
+	"github.com/chenshuo/muduo-examples-in-go/muduo"
 )
 
 type EchoServer struct {
@@ -12,7 +14,7 @@ type EchoServer struct {
 
 func NewEchoServer(listenAddr string) *EchoServer {
 	server := new(EchoServer)
-	server.listener = listenTcpOrDie(listenAddr)
+	server.listener = muduo.ListenTcpOrDie(listenAddr)
 	return server
 }
 

@@ -5,18 +5,6 @@ import (
 	"net"
 )
 
-func maybePanic(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func listenTcpOrDie(listenAddr string) net.Listener {
-	listener, err := net.Listen("tcp", listenAddr)
-	maybePanic(err)
-	return listener
-}
-
 func printConn(c net.Conn, name, updown string) {
 	log.Printf("%v: %v <- %v is %v\n",
 		name, c.LocalAddr().String(), c.RemoteAddr().String(), updown)

@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+
+	"github.com/chenshuo/muduo-examples-in-go/muduo"
 )
 
 type DiscardServer struct {
@@ -13,7 +15,7 @@ type DiscardServer struct {
 
 func NewDiscardServer(listenAddr string) *DiscardServer {
 	server := new(DiscardServer)
-	server.listener = listenTcpOrDie(listenAddr)
+	server.listener = muduo.ListenTcpOrDie(listenAddr)
 	return server
 }
 

@@ -16,5 +16,5 @@ func main() {
 	echoServer := simple.NewEchoServer(":2007")
 	go echoServer.Serve()
 
-	<-ch  // wait forever
+	<-ch // wait forever
 }

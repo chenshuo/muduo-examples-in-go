@@ -5,6 +5,8 @@ import (
 	"io"
 	"log"
 	"net"
+
+	"github.com/chenshuo/muduo-examples-in-go/muduo"
 )
 
 type ChargenServer struct {
@@ -17,7 +19,7 @@ var repeatReader *RepeatReader
 
 func NewChargenServer(listenAddr string) *ChargenServer {
 	server := new(ChargenServer)
-	server.listener = listenTcpOrDie(listenAddr)
+	server.listener = muduo.ListenTcpOrDie(listenAddr)
 	return server
 }
 
