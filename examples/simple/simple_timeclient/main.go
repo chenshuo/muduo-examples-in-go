@@ -16,7 +16,7 @@ func main() {
 		return
 	}
 	host := os.Args[1]
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:2037", host))
+	conn, err := net.Dial("tcp", net.JoinHostPort(host, "2037"))
 	muduo.PanicOnError(err)
 	defer conn.Close()
 

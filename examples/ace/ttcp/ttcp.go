@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/chenshuo/muduo-examples-in-go/muduo"
@@ -43,7 +44,7 @@ func transmit() {
 	total_mb := float64(sessionMessage.Number) * float64(sessionMessage.Length) / 1024.0 / 1024.0
 	fmt.Printf("%.3f MiB in total\n", total_mb)
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", opt.host, opt.port))
+	conn, err := net.Dial("tcp", net.JoinHostPort(opt.host, strconv.Itoa(opt.port)))
 	muduo.PanicOnError(err)
 	// t := conn.(*net.TCPConn)
 	// t.SetNoDelay(false)
