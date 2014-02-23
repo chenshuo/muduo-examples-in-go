@@ -2,16 +2,19 @@ package simple
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
+	"sync/atomic"
+	"time"
 
 	"github.com/chenshuo/muduo-examples-in-go/muduo"
 )
 
 type ChargenServer struct {
 	listener net.Listener
-	// TODO: printThroughput()
+	total    int64
 }
 
 var message []byte
@@ -45,12 +48,11 @@ func init() {
 	repeatReader = NewRepeatReader(message)
 }
 
-func chargen(c net.Conn) {
+func chargen(c net.Conn, total *int64) {
 	defer c.Close()
-	var total int64
 	for {
 		n, err := c.Write(message)
-		total += int64(n)
+		atomic.AddInt64(total, int64(n))
 		if err != nil {
 			log.Println("chargen:", err.Error())
 			break
@@ -59,8 +61,32 @@ func chargen(c net.Conn) {
 			log.Println("chargen: short write", n, "out of", len(message))
 		}
 	}
-	log.Println("total", total)
 	printConn(c, "chargen", "DOWN")
+}
+
+func (s *ChargenServer) ServeWithMeter() error {
+	defer s.listener.Close()
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	go func() {
+		start := time.Now()
+		for t := range ticker.C {
+			transferred := atomic.SwapInt64(&s.total, int64(0))
+			elapsed := t.Sub(start).Seconds()
+			fmt.Printf("%.3f MiB/s\n", float64(transferred)/elapsed/(1024.0*1024.0))
+			start = t
+		}
+	}()
+
+	for {
+		conn, err := s.listener.Accept()
+		if err != nil {
+			return err
+		}
+		printConn(conn, "chargen", "UP")
+		go chargen(conn, &s.total)
+	}
 }
 
 /////////////////// RepeatReader
@@ -83,8 +109,6 @@ func (r *RepeatReader) Read(p []byte) (n int, err error) {
 	return len(r.message), nil
 }
 
-/////////////////// RepeatReader
-
 func chargenAdv(c net.Conn) {
 	defer c.Close()
 	total, err := io.Copy(c, repeatReader)
@@ -95,6 +119,6 @@ func chargenAdv(c net.Conn) {
 	printConn(c, "chargen", "DOWN")
 }
 
-func (s *ChargenServer) Serve() {
-	serveTcp(s.listener, chargenAdv, "chargen")
+func (s *ChargenServer) Serve() error {
+	return serveTcp(s.listener, chargenAdv, "chargen")
 }

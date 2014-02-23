@@ -31,6 +31,7 @@ func (s *TimeServer) Serve() {
 			conn.Close()
 		} else {
 			log.Println("time:", err.Error())
+			// TODO: break if ! temporary
 		}
 	}
 }

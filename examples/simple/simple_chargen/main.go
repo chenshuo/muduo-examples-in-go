@@ -6,5 +6,5 @@ import (
 
 func main() {
 	chargenServer := simple.NewChargenServer(":2019")
-	chargenServer.Serve()
+	chargenServer.ServeWithMeter()
 }

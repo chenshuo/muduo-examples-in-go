@@ -31,6 +31,7 @@ func (s *DaytimeServer) Serve() {
 			conn.Close()
 		} else {
 			log.Println("daytime:", err.Error())
+			// TODO: break if ! temporary
 		}
 	}
 }

@@ -53,12 +53,12 @@ func transmit() {
 	err = binary.Write(conn, binary.BigEndian, &sessionMessage)
 	muduo.PanicOnError(err)
 
-	total_len := 4 + opt.length; // binary.Size(int32(0)) == 4
+	total_len := 4 + opt.length // binary.Size(int32(0)) == 4
 	// println(total_len)
 	payload := make([]byte, total_len)
 	binary.BigEndian.PutUint32(payload, uint32(opt.length))
 	for i := 0; i < opt.length; i++ {
-		payload[4+i] = "0123456789ABCDEF"[i % 16];
+		payload[4+i] = "0123456789ABCDEF"[i%16]
 	}
 
 	for i := 0; i < opt.number; i++ {
