@@ -3,93 +3,130 @@ package chat
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
-	"sync"
+	"runtime"
 	"time"
-	// "sync/atomic"
 
 	"github.com/chenshuo/muduo-examples-in-go/muduo"
 )
 
 type ChatServer struct {
-	listener net.Listener
-	nextConn int64
-	mu       sync.Mutex
-	conns    map[int64]net.Conn
+	listener   net.Listener
+	conns      map[*connection]bool
+	boardcast  chan []byte
+	register   chan *connection
+	unregister chan *connection
 }
 
 func NewChatServer(listenAddr string) *ChatServer {
-	server := new(ChatServer)
-	server.listener = muduo.ListenTcpOrDie(listenAddr)
-	server.conns = make(map[int64]net.Conn)
-	return server
+	return &ChatServer{
+		listener:   muduo.ListenTcpOrDie(listenAddr),
+		conns:      make(map[*connection]bool),
+		boardcast:  make(chan []byte),      // size?
+		register:   make(chan *connection), // size?
+		unregister: make(chan *connection), // size?
+	}
 }
 
-func readMessage(conn net.Conn, buf []byte) (n int, err error) {
-	var length int32
+type connection struct {
+	conn net.Conn
 	// FIXME: use bufio to save syscall
-	err = binary.Read(conn, binary.BigEndian, &length)
+	send chan []byte
+}
+
+func (c *connection) input(boardcast chan []byte) {
+	for {
+		message, err := c.readMessage()
+		if err != nil {
+			log.Println(err)
+			break
+		}
+		boardcast <- message
+	}
+}
+
+func (c *connection) output() {
+	defer c.close()
+	for m := range c.send {
+		err := binary.Write(c.conn, binary.BigEndian, int32(len(m)))
+		if err != nil {
+			log.Println(err)
+			break
+		}
+		var n int
+		n, err = c.conn.Write(m)
+		if err != nil {
+			log.Println(err)
+			break
+		}
+		if n != len(m) {
+			log.Println("short write")
+			break
+		}
+	}
+}
+
+func (c *connection) close() {
+	log.Println("close connection")
+	c.conn.Close()
+}
+
+func (c *connection) readMessage() (message []byte, err error) {
+	var length int32
+	err = binary.Read(c.conn, binary.BigEndian, &length)
 	if err != nil {
-		log.Println(err)
-		return 0, err
+		return nil, err
 	}
-	if length > int32(len(buf)) || length < 0 {
-		log.Println("Invalid length in header", length)
-		return 0, errors.New("invalid length")
+	if length > 65536 || length < 0 {
+		return nil, errors.New("invalid length")
 	}
+	message = make([]byte, int(length))
 	if length > 0 {
 		var n int
-		n, err = io.ReadFull(conn, buf[4:4+length])
+		n, err = io.ReadFull(c.conn, message)
 		if err != nil {
-			log.Println("error when reading payload", err)
-			return 0, err
+			return nil, err
 		}
-		if int32(n) != length {
-			log.Println("short reads", n, "of", length)
-			return 0, errors.New("short read")
+		if n != len(message) {
+			return message, errors.New("short read")
 		}
 	}
-	return int(length), nil
+	return message, nil
 }
 
 func (s *ChatServer) ServeConn(conn net.Conn) {
-	defer conn.Close()
-	s.mu.Lock()
-	connId := s.nextConn
-	s.nextConn++
-	s.conns[connId] = conn
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.conns, connId)
-		s.mu.Unlock()
-	}()
+	c := &connection{conn: conn, send: make(chan []byte, 1024)}
+	s.register <- c
+	defer func() { s.unregister <- c }()
 
-	buf := make([]byte, 65536)
-	for {
-		length, err := readMessage(conn, buf)
-		if err != nil {
-			break
-		}
-
-		binary.BigEndian.PutUint32(buf, uint32(length))
-		log.Println("Sending")
-		conn.Write(buf)
-	}
+	go c.output()
+	c.input(s.boardcast)
 }
 
 func (s *ChatServer) Run() {
-	ticks := time.Tick(time.Second * 5)
-	go func() {
-		for _ = range ticks {
-			s.mu.Lock()
-			n := len(s.conns)
-			s.mu.Unlock()
-			fmt.Println(n)
+	ticks := time.Tick(time.Second * 1)
+	go muduo.ServeTcp(s.listener, s, "chat")
+	for {
+		select {
+		case c := <-s.register:
+			s.conns[c] = true
+		case c := <-s.unregister:
+			delete(s.conns, c)
+			close(c.send)
+		case m := <-s.boardcast:
+			for c := range s.conns {
+				select {
+				case c.send <- m:
+				default:
+					delete(s.conns, c)
+					close(c.send)
+					log.Println("kick slow connection")
+				}
+			}
+		case _ = <-ticks:
+			log.Println(len(s.conns), runtime.NumGoroutine())
 		}
-	}()
-	muduo.ServeTcp(s.listener, s, "chat")
+	}
 }
