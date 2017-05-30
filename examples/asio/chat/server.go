@@ -15,7 +15,7 @@ import (
 type ChatServer struct {
 	listener   net.Listener
 	conns      map[*connection]bool
-	boardcast  chan []byte
+	broadcast  chan []byte
 	register   chan *connection
 	unregister chan *connection
 }
@@ -24,7 +24,7 @@ func NewChatServer(listenAddr string) *ChatServer {
 	return &ChatServer{
 		listener:   muduo.ListenTcpOrDie(listenAddr),
 		conns:      make(map[*connection]bool),
-		boardcast:  make(chan []byte),      // size?
+		broadcast:  make(chan []byte),      // size?
 		register:   make(chan *connection), // size?
 		unregister: make(chan *connection), // size?
 	}
@@ -36,14 +36,14 @@ type connection struct {
 	send chan []byte
 }
 
-func (c *connection) input(boardcast chan []byte) {
+func (c *connection) input(broadcast chan []byte) {
 	for {
 		message, err := c.readMessage()
 		if err != nil {
 			log.Println(err)
 			break
 		}
-		boardcast <- message
+		broadcast <- message
 	}
 }
 
@@ -102,7 +102,7 @@ func (s *ChatServer) ServeConn(conn net.Conn) {
 	defer func() { s.unregister <- c }()
 
 	go c.output()
-	c.input(s.boardcast)
+	c.input(s.broadcast)
 }
 
 func (s *ChatServer) Run() {
@@ -115,7 +115,7 @@ func (s *ChatServer) Run() {
 		case c := <-s.unregister:
 			delete(s.conns, c)
 			close(c.send)
-		case m := <-s.boardcast:
+		case m := <-s.broadcast:
 			for c := range s.conns {
 				select {
 				case c.send <- m:
